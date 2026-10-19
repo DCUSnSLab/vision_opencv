@@ -3,6 +3,28 @@
 #include <gtest/gtest.h>
 #include <memory>
 
+TEST(CvBridgeTest, byteEncodingsShareWithEitherEndianFlag)
+{
+  for (const auto & encoding : {"rgb8", "bgr8", "mono8", "8UC3"}) {
+    auto message = std::make_shared<sensor_msgs::msg::Image>();
+    message->height = 2;
+    message->width = 3;
+    message->encoding = encoding;
+    message->step = message->width * CV_ELEM_SIZE(cv_bridge::getCvType(encoding)) + 1;
+    message->data.resize(message->height * message->step, 42);
+    for (const bool bigendian : {false, true}) {
+      message->is_bigendian = bigendian;
+      auto view = cv_bridge::toCvShare(message, encoding);
+      EXPECT_EQ(message->data.data(), view->image.data);
+      EXPECT_EQ(message->step, view->image.step[0]);
+      EXPECT_EQ(42, view->image.ptr(1)[0]);
+    }
+    auto view = cv_bridge::toCvShare(message, encoding);
+    message.reset();
+    EXPECT_EQ(42, view->image.ptr(1)[0]);
+  }
+}
+
 TEST(CvBridgeTest, endianness)
 {
   using namespace boost::endian;

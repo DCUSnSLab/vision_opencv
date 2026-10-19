@@ -134,6 +134,8 @@ class CvBridge(object):
 
         if desired_encoding == 'passthrough':
             return im
+        if desired_encoding == img_msg.encoding:
+            return im.copy()
 
         from cv_bridge.boost.cv_bridge_boost import cvtColor2
 
@@ -196,6 +198,31 @@ class CvBridge(object):
             raise CvBridgeError(e)
 
         return res
+
+    def imgmsg_to_cv2_view(self, img_msg, readonly=True):
+        """
+        Return a NumPy view with the message's strides and byte order.
+
+        The buffer is kept alive by the array. Changes to the message data remain
+        visible in the view. No encoding or native byte-order conversion is done.
+        The message data must support the buffer protocol.
+        Set readonly=False to allow writes, including through a DLPack consumer.
+        """
+        import numpy as np
+        dtype, channels = self.encoding_to_dtype_with_channels(img_msg.encoding)
+        dtype = np.dtype(dtype).newbyteorder('>' if img_msg.is_bigendian else '<')
+        pixel_size = dtype.itemsize * channels
+        if img_msg.step < img_msg.width * pixel_size:
+            raise CvBridgeError('Image step is smaller than the pixel row')
+        shape = (img_msg.height, img_msg.width)
+        strides = (img_msg.step, pixel_size)
+        if channels > 1:
+            shape += (channels,)
+            strides += (dtype.itemsize,)
+        buffer = memoryview(img_msg.data)
+        if readonly:
+            buffer = buffer.toreadonly()
+        return np.ndarray(shape=shape, dtype=dtype, buffer=buffer, strides=strides)
 
     def cv2_to_compressed_imgmsg(self, cvim, dst_format='jpg'):
         """
@@ -278,7 +305,8 @@ class CvBridge(object):
                                     % (encoding, cv_type))
         if cvim.dtype.byteorder == '>':
             img_msg.is_bigendian = True
-        img_msg.data.frombytes(cvim.tobytes())
+        if cvim.size:
+            img_msg.data.frombytes(memoryview(np.ascontiguousarray(cvim)).cast('B'))
         img_msg.step = len(img_msg.data) // img_msg.height
 
         return img_msg

@@ -327,27 +327,19 @@ cv::Mat matFromImage(const sensor_msgs::msg::Image & source)
   return mat_swap;
 }
 
-// Internal, used by toCvCopy and cvtColor
-CvImagePtr toCvCopyImpl(
-  const cv::Mat & source,
-  const std_msgs::msg::Header & src_header,
+void convertImage(
+  const cv::Mat & source, cv::Mat & destination,
   const std::string & src_encoding,
   const std::string & dst_encoding)
 {
-  // Copy metadata
-  CvImagePtr ptr = std::make_shared<CvImage>();
-  ptr->header = src_header;
-
-  // Copy to new buffer if same encoding requested
   if (dst_encoding.empty() || dst_encoding == src_encoding) {
-    ptr->encoding = src_encoding;
-    source.copyTo(ptr->image);
+    source.copyTo(destination);
   } else {
     // Convert the source data to the desired encoding
     const std::vector<int> conversion_codes = getConversionCode(src_encoding, dst_encoding);
     cv::Mat image1 = source;
-    cv::Mat image2;
     for (size_t i = 0; i < conversion_codes.size(); ++i) {
+      cv::Mat image2 = i + 1 == conversion_codes.size() ? destination : cv::Mat();
       int conversion_code = conversion_codes[i];
       if (conversion_code == SAME_FORMAT) {
         // Same number of channels, but different bit depth
@@ -370,9 +362,21 @@ CvImagePtr toCvCopyImpl(
       }
       image1 = image2;
     }
-    ptr->image = image2;
-    ptr->encoding = dst_encoding;
+    destination = image1;
   }
+}
+
+// Internal, used by toCvCopy and cvtColor
+CvImagePtr toCvCopyImpl(
+  const cv::Mat & source,
+  const std_msgs::msg::Header & src_header,
+  const std::string & src_encoding,
+  const std::string & dst_encoding)
+{
+  CvImagePtr ptr = std::make_shared<CvImage>();
+  ptr->header = src_header;
+  ptr->encoding = dst_encoding.empty() ? src_encoding : dst_encoding;
+  convertImage(source, ptr->image, src_encoding, dst_encoding);
 
   return ptr;
 }
@@ -384,6 +388,24 @@ sensor_msgs::msg::Image::SharedPtr CvImage::toImageMsg() const
   sensor_msgs::msg::Image::SharedPtr ptr = std::make_shared<sensor_msgs::msg::Image>();
   toImageMsg(*ptr);
   return ptr;
+}
+
+sensor_msgs::msg::Image::SharedPtr cvtColorToImageMsg(
+  const CvImage & source, const std::string & encoding)
+{
+  auto message = std::make_shared<sensor_msgs::msg::Image>();
+  message->header = source.header;
+  message->height = source.image.rows;
+  message->width = source.image.cols;
+  message->encoding = encoding.empty() ? source.encoding : encoding;
+  message->is_bigendian = (rcpputils::endian::native == rcpputils::endian::big);
+  const int type = getCvType(message->encoding);
+  message->step = message->width * CV_ELEM_SIZE(type);
+  message->data.resize(message->height * message->step);
+  cv::Mat destination(
+    message->height, message->width, type, message->data.data(), message->step);
+  convertImage(source.image, destination, source.encoding, message->encoding);
+  return message;
 }
 
 void CvImage::toImageMsg(sensor_msgs::msg::Image & ros_image) const
@@ -440,9 +462,9 @@ CvImageConstPtr toCvShare(
   const std::shared_ptr<void const> & tracked_object,
   const std::string & encoding)
 {
-  // If the encoding different or the endianness different, you have to copy
-  if ((!encoding.empty() && source.encoding != encoding) || (!source.is_bigendian !=
-    (rcpputils::endian::native != rcpputils::endian::big)))
+  if ((!encoding.empty() && source.encoding != encoding) ||
+    (source.is_bigendian != (rcpputils::endian::native == rcpputils::endian::big) &&
+    CV_ELEM_SIZE1(getCvType(source.encoding)) > 1))
   {
     return toCvCopy(source, encoding);
   }

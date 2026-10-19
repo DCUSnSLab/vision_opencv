@@ -57,6 +57,29 @@ bool isUnsigned(const std::string & encoding)
   // BAYER_RGGB8, BAYER_BGGR8, BAYER_GBRG8, BAYER_GRBG8, BAYER_RGGB16,
   // BAYER_BGGR16, BAYER_GBRG16, BAYER_GRBG16, YUV422
 }
+
+TEST(CvBridge, ConvertDirectlyToImageMsg)
+{
+  cv::Mat pixels(5, 8, CV_8UC3);
+  cv::randu(pixels, 0, 255);
+  std_msgs::msg::Header header;
+  header.frame_id = "camera";
+  header.stamp.sec = 42;
+  auto source = std::make_shared<cv_bridge::CvImage>(
+    header, RGB8, pixels(cv::Rect(1, 1, 5, 3)));
+  for (const auto & encoding : {RGB8, BGR8, MONO8, MONO16, RGB16, BGRA16}) {
+    auto expected = cv_bridge::cvtColor(source, encoding)->toImageMsg();
+    auto actual = cv_bridge::cvtColorToImageMsg(*source, encoding);
+    EXPECT_EQ(*expected, *actual) << encoding;
+    auto view = cv_bridge::toCvShare(actual, encoding);
+    EXPECT_EQ(actual->data.data(), view->image.data);
+  }
+  EXPECT_EQ(*source->toImageMsg(), *cv_bridge::cvtColorToImageMsg(*source, ""));
+  auto independent = cv_bridge::cvtColorToImageMsg(*source, RGB8);
+  source->image.setTo(cv::Scalar(0, 0, 0));
+  EXPECT_NE(source->toImageMsg()->data, independent->data);
+  EXPECT_THROW(cv_bridge::cvtColorToImageMsg(*source, "invalid"), cv_bridge::Exception);
+}
 std::vector<std::string>
 getEncodings()
 {

@@ -65,6 +65,10 @@ class CvImage;
 typedef std::shared_ptr<CvImage> CvImagePtr;
 typedef std::shared_ptr<CvImage const> CvImageConstPtr;
 
+/** Convert into an owned message, writing the final conversion into its data buffer. */
+CV_BRIDGE_EXPORT sensor_msgs::msg::Image::SharedPtr cvtColorToImageMsg(
+  const CvImage & source, const std::string & encoding);
+
 // From: http://docs.opencv.org/modules/highgui/doc/reading_and_writing_images_and_video.html#Mat
 // imread(const string& filename, int flags)
 typedef enum
