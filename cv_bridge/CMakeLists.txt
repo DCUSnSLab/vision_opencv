@@ -60,6 +60,14 @@ if(NOT OpenCV_FOUND)
   )
 endif()
 
+# Every opencv_core declares cv::cuda::GpuMat, but only a CUDA build of OpenCV implements it.
+if(OpenCV_CUDA_VERSION)
+  set(cv_bridge_opencv_has_cuda ON)
+else()
+  set(cv_bridge_opencv_has_cuda OFF)
+endif()
+option(CV_BRIDGE_ENABLE_CUDA "Build the cv::cuda::GpuMat type adapter" ${cv_bridge_opencv_has_cuda})
+
 if(NOT CV_BRIDGE_DISABLE_PYTHON)
   ament_python_install_package(${PROJECT_NAME}
     PACKAGE_DIR python/${PROJECT_NAME}
@@ -87,7 +95,12 @@ ament_export_dependencies(
 ament_export_targets(export_${PROJECT_NAME})
 
 # install the include folder
-install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME})
+if(CV_BRIDGE_ENABLE_CUDA)
+  install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME})
+else()
+  install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME}
+    PATTERN "cv_gpu_mat_sensor_msgs_image_type_adapter.hpp" EXCLUDE)
+endif()
 
 install(TARGETS ${PROJECT_NAME}
         RUNTIME DESTINATION bin

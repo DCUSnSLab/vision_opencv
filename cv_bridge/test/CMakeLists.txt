@@ -27,6 +27,15 @@ target_link_libraries(${PROJECT_NAME}-utest
   opencv_imgcodecs
   ${sensor_msgs_TARGETS})
 
+if(CV_BRIDGE_ENABLE_CUDA)
+  ament_add_gtest(${PROJECT_NAME}-gpu-mat-type-adapter
+    test_gpu_mat_type_adapter.cpp
+    APPEND_LIBRARY_DIRS "${cv_bridge_lib_dir}")
+  target_link_libraries(${PROJECT_NAME}-gpu-mat-type-adapter
+    ${PROJECT_NAME}
+    ${sensor_msgs_TARGETS})
+endif()
+
 # enable cv_bridge python tests
 find_package(ament_cmake_pytest REQUIRED)
 ament_add_pytest_test(enumerants.py "enumerants.py")

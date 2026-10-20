@@ -4,6 +4,9 @@ add_library(${PROJECT_NAME}
   cv_mat_sensor_msgs_image_type_adapter.cpp
   rgb_colors.cpp
 )
+if(CV_BRIDGE_ENABLE_CUDA)
+  target_sources(${PROJECT_NAME} PRIVATE cv_gpu_mat_sensor_msgs_image_type_adapter.cpp)
+endif()
 include(GenerateExportHeader)
 generate_export_header(${PROJECT_NAME} EXPORT_FILE_NAME ${PROJECT_NAME}/${PROJECT_NAME}_export.h)
 target_include_directories(${PROJECT_NAME} PUBLIC
