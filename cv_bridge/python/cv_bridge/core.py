@@ -132,10 +132,8 @@ class CvBridge(object):
                          dtype=np.uint8, buffer=cmprs_img_msg.data)
         im = cv2.imdecode(buf, cv2.IMREAD_UNCHANGED)
 
-        if desired_encoding == 'passthrough':
+        if desired_encoding in ('passthrough', 'bgr8'):
             return im
-        if desired_encoding == img_msg.encoding:
-            return im.copy()
 
         from cv_bridge.boost.cv_bridge_boost import cvtColor2
 
@@ -185,7 +183,7 @@ class CvBridge(object):
 
         # If the byte order is different between the message and the system.
         if img_msg.is_bigendian == (sys.byteorder == 'little'):
-            im = im.byteswap().newbyteorder()
+            im = im.byteswap().view(im.dtype.newbyteorder())
 
         if desired_encoding == 'passthrough':
             return im

@@ -101,3 +101,31 @@ def test_same_encoding_owns_output(encoding, dtype, channels):
     assert converted.flags.writeable
     converted[:] = 0
     assert bytes(message.data) == image.tobytes()
+
+
+@pytest.mark.parametrize('encoding,channels', [('mono16', 1), ('bgr16', 3), ('16UC4', 4)])
+@pytest.mark.parametrize('padding_pixels', [0, 2])
+def test_bigendian_to_native(encoding, channels, padding_pixels):
+    shape = (3, 5) + ((channels,) if channels > 1 else ())
+    expected = (np.arange(np.prod(shape)) * 1000 + 3).reshape(shape).astype(np.uint16)
+    step = (5 + padding_pixels) * 2 * channels
+    message = Image(height=3, width=5, step=step, encoding=encoding,
+                    is_bigendian=True, data=bytes(3 * step))
+    for row in range(3):
+        payload = expected[row].astype('>u2').tobytes()
+        memoryview(message.data)[row * step:row * step + len(payload)] = payload
+    image = cv_bridge.CvBridge().imgmsg_to_cv2(message)
+    np.testing.assert_array_equal(image, expected)
+    assert image.dtype.isnative
+
+
+@pytest.mark.parametrize('desired_encoding', ['passthrough', 'bgr8', 'mono8'])
+def test_compressed_desired_encoding(desired_encoding):
+    import cv2
+    bridge = cv_bridge.CvBridge()
+    image = np.arange(4 * 6 * 3).reshape(4, 6, 3).astype(np.uint8)
+    message = bridge.cv2_to_compressed_imgmsg(image, 'png')
+    decoded = bridge.compressed_imgmsg_to_cv2(message, desired_encoding)
+    if desired_encoding == 'mono8':
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    np.testing.assert_array_equal(decoded, image)
