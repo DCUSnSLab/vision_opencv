@@ -27,6 +27,7 @@
 #include "cv_bridge/visibility_control.h"
 
 #include <optional>
+#include <utility>
 
 namespace cv_bridge
 {
@@ -99,14 +100,10 @@ public:
 
   CV_BRIDGE_PUBLIC
   explicit ROSCvMatContainer(const ROSCvMatContainer & other)
-  : header_(other.header_), frame_(other.frame_.clone()), is_bigendian_(other.is_bigendian_)
+  : header_(other.header_), is_bigendian_(other.is_bigendian_),
+    encoding_override_(other.encoding_override_)
   {
-    if (std::holds_alternative<std::shared_ptr<sensor_msgs::msg::Image>>(other.storage_)) {
-      storage_ = std::get<std::shared_ptr<sensor_msgs::msg::Image>>(other.storage_);
-    } else if (std::holds_alternative<std::unique_ptr<sensor_msgs::msg::Image>>(other.storage_)) {
-      storage_ = std::make_unique<sensor_msgs::msg::Image>(
-        *std::get<std::unique_ptr<sensor_msgs::msg::Image>>(other.storage_));
-    }
+    copy_image(other);
   }
 
   CV_BRIDGE_PUBLIC
@@ -114,19 +111,19 @@ public:
   {
     if (this != &other) {
       header_ = other.header_;
-      frame_ = other.frame_.clone();
       is_bigendian_ = other.is_bigendian_;
-      if (std::holds_alternative<std::shared_ptr<sensor_msgs::msg::Image>>(other.storage_)) {
-        storage_ = std::get<std::shared_ptr<sensor_msgs::msg::Image>>(other.storage_);
-      } else if (std::holds_alternative<std::unique_ptr<sensor_msgs::msg::Image>>(other.storage_)) {
-        storage_ = std::make_unique<sensor_msgs::msg::Image>(
-          *std::get<std::unique_ptr<sensor_msgs::msg::Image>>(other.storage_));
-      } else if (std::holds_alternative<std::nullptr_t>(other.storage_)) {
-        storage_ = nullptr;
-      }
+      encoding_override_ = other.encoding_override_;
+      copy_image(other);
     }
     return *this;
   }
+
+  /// Take over the image of other without copying it.
+  CV_BRIDGE_PUBLIC
+  ROSCvMatContainer(ROSCvMatContainer && other) = default;
+
+  CV_BRIDGE_PUBLIC
+  ROSCvMatContainer & operator=(ROSCvMatContainer && other) = default;
 
   /// Store an owning pointer to a sensor_msg::msg::Image, and create a cv::Mat that references it.
   CV_BRIDGE_PUBLIC
@@ -220,6 +217,26 @@ public:
   encoding_override() const;
 
 private:
+  // One copy of the image: an owned message is copied and viewed again, anything else cloned.
+  void copy_image(const ROSCvMatContainer & other)
+  {
+    using Image = sensor_msgs::msg::Image;
+    if (std::holds_alternative<std::unique_ptr<Image>>(other.storage_)) {
+      auto image = std::make_unique<Image>(*std::get<std::unique_ptr<Image>>(other.storage_));
+      frame_ = cv::Mat(
+        other.frame_.rows, other.frame_.cols, other.frame_.type(), image->data.data(),
+        other.frame_.step);
+      storage_ = std::move(image);
+      return;
+    }
+    frame_ = other.frame_.clone();
+    if (std::holds_alternative<std::shared_ptr<Image>>(other.storage_)) {
+      storage_ = std::get<std::shared_ptr<Image>>(other.storage_);
+    } else {
+      storage_ = nullptr;
+    }
+  }
+
   std_msgs::msg::Header header_;
   cv::Mat frame_;
   SensorMsgsImageStorageType storage_;
@@ -282,6 +299,15 @@ struct rclcpp::TypeAdapter<cv_bridge::ROSCvMatContainer, sensor_msgs::msg::Image
     custom_type & destination)
   {
     destination = cv_bridge::ROSCvMatContainer(source);
+  }
+
+  /// A container that references source instead of copying it.
+  static
+  std::shared_ptr<const custom_type>
+  convert_to_custom(std::shared_ptr<const ros_message_type> source)
+  {
+    return std::make_shared<custom_type>(
+      std::const_pointer_cast<ros_message_type>(std::move(source)));
   }
 };
 
